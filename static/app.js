@@ -592,7 +592,9 @@
         // 停止录音 → 识别
         toggleBtn.textContent = "识别中...";
         toggleBtn.disabled = true;
-        post("/api/voice/stop").then((res) => {
+        fetch("/api/voice/stop", { method: "POST" })
+          .then((r) => r.json())
+          .then((res) => {
           voiceActive = false;
           toggleBtn.textContent = "开始录音";
           toggleBtn.classList.remove("voice-on");
