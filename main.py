@@ -56,6 +56,7 @@ def _voice_motion(action: str, duration: float, motion_svc):
 
     对照 VoiceService.COMMAND_MAP 中的 action 字段。
     duration > 0 时执行 duration 秒后自动停止。
+    每 0.3s 续命看门狗，避免被 MotionService 的 0.5s 超时截断。
     """
     import time as _time
     # 速度因子 (取当前 motion_svc.speed 百分比)
@@ -81,17 +82,24 @@ def _voice_motion(action: str, duration: float, motion_svc):
         "strafe_right": (0.0, -sp, 0.0),
         "stop":         (0.0, 0.0, 0.0),
     }
-
     vx, vy, vz = commands.get(action, (0.0, 0.0, 0.0))
-    motion_svc.execute(vx, vy, vz)
     logger.info(f"🎤 语音指令: {action} → vx={vx:.2f} vy={vy:.2f} vz={vz:.2f} (持续 {duration}s)")
 
     if duration > 0:
-        def _auto_stop():
-            _time.sleep(duration)
+        def _timed_move():
+            """后台线程: 每 0.3s 续命看门狗，到时间后停止"""
+            elapsed = 0.0
+            tick = 0.3  # 小于看门狗 0.5s 超时
+            while elapsed < duration:
+                motion_svc.execute(vx, vy, vz)
+                sleep_time = min(tick, duration - elapsed)
+                _time.sleep(sleep_time)
+                elapsed += sleep_time
             motion_svc.execute(0.0, 0.0, 0.0)
         import threading
-        threading.Thread(target=_auto_stop, daemon=True).start()
+        threading.Thread(target=_timed_move, daemon=True).start()
+    else:
+        motion_svc.execute(vx, vy, vz)
 
 
 def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc):
@@ -137,11 +145,17 @@ def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc):
                     "stop":         (0.0, 0.0, 0.0),
                 }
                 vx, vy, vz = cmd.get(action, (0.0, 0.0, 0.0))
-                motion_svc.execute(vx, vy, vz)
                 if duration > 0:
-                    _time.sleep(duration)
-                    motion_svc.execute(0.0, 0.0, 0.0)
-                    _time.sleep(0.2)
+                    # 每 0.3s 续命看门狗, 避免被 0.5s 超时截断
+                    elapsed = 0.0
+                    tick = 0.3
+                    while elapsed < duration:
+                        motion_svc.execute(vx, vy, vz)
+                        sleep_time = min(tick, duration - elapsed)
+                        _time.sleep(sleep_time)
+                        elapsed += sleep_time
+                motion_svc.execute(0.0, 0.0, 0.0)
+                _time.sleep(0.2)
 
             elif action == "speed_up":
                 motion_svc.speed = min(100, motion_svc.speed + 10)
