@@ -631,6 +631,57 @@
     });
   })();
 
+  // ====== 智能语音 (STT → LLM → TTS) ======
+  (function () {
+    const smartBtn = document.getElementById("btn-smart-toggle");
+    const resultEl  = document.getElementById("voice-result");
+    let smartActive = false;
+
+    if (!smartBtn || !resultEl) return;
+
+    smartBtn.addEventListener("click", () => {
+      if (smartActive) {
+        // 停止录音 → 智能识别
+        smartBtn.textContent = "🧠 思考中...";
+        smartBtn.disabled = true;
+        fetch("/api/smart/stop", { method: "POST" })
+          .then((r) => r.json())
+          .then((res) => {
+            smartActive = false;
+            smartBtn.textContent = "🧠 智能语音";
+            smartBtn.classList.remove("voice-on");
+            smartBtn.disabled = false;
+
+            if (res.plan) {
+              const intent = res.plan.intent || "";
+              const tts = res.plan.tts_response || "";
+              const steps = (res.plan.steps || []).map(s => s.description || s.action).join(" → ");
+              resultEl.innerHTML = `<div class="smart-result">
+                <div class="voice-cmd">🗣 "${res.text}"</div>
+                <div class="smart-intent">💡 ${intent}</div>
+                <div class="smart-steps">📋 ${steps}</div>
+                <div class="smart-tts">🔊 "${tts}"</div>
+              </div>`;
+            } else if (res.text) {
+              resultEl.innerHTML = `<span class="voice-text">🗣 "${res.text}" (LLM 未返回)</span>`;
+            } else {
+              resultEl.innerHTML = `<span class="voice-text">⚠ ${res.error || "未识别"}</span>`;
+            }
+          });
+      } else {
+        // 开始录音
+        fetch("/api/smart/start", { method: "POST" })
+          .then((r) => r.json())
+          .then(() => {
+            smartActive = true;
+            smartBtn.textContent = "🔴 说话中... 点击停止";
+            smartBtn.classList.add("voice-on");
+            resultEl.innerHTML = "";
+          });
+      }
+    });
+  })();
+
   // ====== 启动 ======
   startSensorPoll();
 })();

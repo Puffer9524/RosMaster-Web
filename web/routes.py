@@ -28,13 +28,18 @@ bp = Blueprint("routes", __name__)
 _services = {}
 
 
-def inject_services(motion_svc, light_svc, sensor_svc, serial_drv, voice_svc=None):
+def inject_services(motion_svc, light_svc, sensor_svc, serial_drv,
+                    voice_svc=None, tts_svc=None, llm_svc=None,
+                    plan_executor=None):
     """注入业务服务引用 (main.py 调用)"""
     _services["motion"] = motion_svc
     _services["light"] = light_svc
     _services["sensor"] = sensor_svc
     _services["driver"] = serial_drv
     _services["voice"] = voice_svc
+    _services["tts"] = tts_svc
+    _services["llm"] = llm_svc
+    _services["plan_executor"] = plan_executor
 
 
 # =================================================================
@@ -594,3 +599,63 @@ def api_voice():
     if voice is None:
         return jsonify({"recording": False, "text": "", "error": "未初始化"})
     return jsonify(voice.get_result())
+
+
+# =================================================================
+# 智能语音 API (STT → LLM → 执行 → TTS)
+# =================================================================
+
+@bp.route("/api/smart/start", methods=["POST"])
+def api_smart_start():
+    """智能语音: 开始录音"""
+    voice = _services.get("voice")
+    if voice is None:
+        return jsonify({"error": "语音服务未初始化"}), 503
+    ok = voice.start_recording()
+    return jsonify({"ok": ok, "recording": voice.is_recording()})
+
+
+@bp.route("/api/smart/stop", methods=["POST"])
+def api_smart_stop():
+    """智能语音: 停止录音 → STT识别 → LLM规划 → 执行 → TTS朗读
+
+    流程完全对照 TonyPi demo_07_memory_dialog:
+        STT_Control.transcribe() → LLM_Control.parse() → StepExecutor.execute() → TTS
+    """
+    voice = _services.get("voice")
+    llm = _services.get("llm")
+    tts = _services.get("tts")
+    driver = _services.get("driver")
+    motion = _services.get("motion")
+    light = _services.get("light")
+
+    if not all([voice, llm, driver]):
+        return jsonify({"error": "服务未完整初始化"}), 503
+
+    # 1. 停止录音 → STT 识别
+    stt_result = voice.stop_and_transcribe()
+    text = stt_result.get("text", "")
+
+    if not text:
+        return jsonify({
+            "ok": True,
+            "text": "",
+            "plan": None,
+            "tts_response": "",
+            "error": stt_result.get("error", "未识别到语音"),
+        })
+
+    # 2. LLM 解析 → 执行计划
+    plan = llm.parse(text)
+
+    # 3. 执行计划
+    executor = _services.get("plan_executor")
+    if plan and executor:
+        executor(plan)
+
+    return jsonify({
+        "ok": True,
+        "text": text,
+        "plan": plan,
+        "tts_response": plan.get("tts_response", "") if plan else "",
+    })

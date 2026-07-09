@@ -61,5 +61,20 @@ XUNFEI_APPID = os.environ.get("XUNFEI_APPID", "5f750c99")
 XUNFEI_API_KEY = os.environ.get("XUNFEI_API_KEY", "2a0f2ee33f09efbe904aa7689a8c9d4e")
 XUNFEI_API_SECRET = os.environ.get("XUNFEI_API_SECRET", "NzBmZjNmZmY4YjFkMWM3NTU5NzMwZDJj")
 
+# ── 文字转语音 TTS (对照 TonyPi TTS_Control: 科大讯飞 TTS WebSocket API + aplay 播放) ──
+# 注意: TTS 使用独立的讯飞应用 (与 STT 不同账号)
+TTS_APPID = os.environ.get("TTS_APPID", "9c724cae")
+TTS_API_KEY = os.environ.get("TTS_API_KEY", "e3b51df80911bfed156cccc85bf87609")
+TTS_API_SECRET = os.environ.get("TTS_API_SECRET", "OGM0YmU0MDk1MWMzYzViODhjM2YyOWQx")
+TTS_VOICE = os.environ.get("TTS_VOICE", "x4_yezi")       # 发音人
+TTS_SPEED = int(os.environ.get("TTS_SPEED", "50"))        # 语速 0-100
+TTS_VOLUME = int(os.environ.get("TTS_VOLUME", "100"))     # 音量 0-100
+TTS_PLAY_DEVICE = os.environ.get("TTS_PLAY_DEVICE", "")   # aplay -D 设备, 空=自动探测
+
+# ── 大模型 LLM (对照 TonyPi LLM_Control: DeepSeek Chat API) ──
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-619cde7eb0b04dc896c3b2014e03da71")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+
 # ── 调试 ──
 DEBUG = os.environ.get("ROSMASTER_DEBUG", "0") == "1"

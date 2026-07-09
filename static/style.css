@@ -136,6 +136,11 @@ body {
 }
 .voice-result .voice-cmd  { color: #66bb6a; }
 .voice-result .voice-text { color: #ffcc80; }
+.smart-result { font-size: 12px; line-height: 1.6; }
+.smart-intent { color: #64b5f6; }
+.smart-steps { color: #ffcc80; }
+.smart-tts   { color: #a5d6a7; }
+.smart-btn { border-color: #6a1b9a; color: #ce93d8; }
 
 /* 车载歌曲栏 */
 #music-bar {
