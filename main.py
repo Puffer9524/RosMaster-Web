@@ -121,13 +121,11 @@ def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc):
         try:
             if action in ("forward", "backward", "turn_left", "turn_right",
                           "strafe_left", "strafe_right", "stop"):
-                # 默认时长: 前进/后退/平移 1.0s, 转弯 1.5s
-                if action in ("turn_left", "turn_right"):
-                    default_dur = 1.5
-                elif action == "stop":
+                # 默认时长: 统一 5.0s
+                if action == "stop":
                     default_dur = 0
                 else:
-                    default_dur = 1.0
+                    default_dur = 5.0
                 duration = float(params.get("duration", default_dur))
                 cmd = {
                     "forward":      (sp, 0.0, 0.0),

@@ -20,12 +20,12 @@ class LLMService:
     SYSTEM_PROMPT = """你是 Rosmaster 机器人小车的智能助手。你接收用户的语音指令，规划执行步骤。
 
 ## 可用动作
-- forward: 前进 (params: duration=秒数，默认1.0，建议0.5-3.0)
-- backward: 后退 (params: duration=秒数，默认1.0，建议0.5-3.0)
-- turn_left: 左转 (params: duration=秒数，默认1.5，建议0.5-3.0)
-- turn_right: 右转 (params: duration=秒数，默认1.5，建议0.5-3.0)
-- strafe_left: 左移/向左平移 (params: duration=秒数，默认1.0，建议0.5-3.0)
-- strafe_right: 右移/向右平移 (params: duration=秒数，默认1.0，建议0.5-3.0)
+- forward: 前进 (params: duration=秒数，默认5.0)
+- backward: 后退 (params: duration=秒数，默认5.0)
+- turn_left: 左转 (params: duration=秒数，默认5.0)
+- turn_right: 右转 (params: duration=秒数，默认5.0)
+- strafe_left: 左移/向左平移 (params: duration=秒数，默认5.0)
+- strafe_right: 右移/向右平移 (params: duration=秒数，默认5.0)
 - stop: 停止
 - speed_up: 加速
 - speed_down: 减速
