@@ -569,30 +569,28 @@ def register_video_route(app, camera_driver, quality: int = 65):
 
 @bp.route("/api/voice/start", methods=["POST"])
 def api_voice_start():
-    """开启语音识别监听"""
+    """开始录音"""
     voice = _services.get("voice")
     if voice is None:
         return jsonify({"error": "语音服务未初始化"}), 503
-    voice._enabled = True
-    if not voice._running:
-        voice.start()
-    return jsonify({"ok": True, "listening": True})
+    ok = voice.start_recording()
+    return jsonify({"ok": ok, "recording": voice.is_recording()})
 
 
 @bp.route("/api/voice/stop", methods=["POST"])
 def api_voice_stop():
-    """关闭语音识别监听 (不退出线程, 只暂停识别)"""
+    """停止录音并识别"""
     voice = _services.get("voice")
     if voice is None:
         return jsonify({"error": "语音服务未初始化"}), 503
-    voice._enabled = False
-    return jsonify({"ok": True, "listening": False})
+    result = voice.stop_and_transcribe()
+    return jsonify({"ok": True, **result})
 
 
 @bp.route("/api/voice")
 def api_voice():
-    """获取语音识别最新结果"""
+    """获取语音识别状态"""
     voice = _services.get("voice")
     if voice is None:
-        return jsonify({"listening": False, "text": "", "error": "未初始化"})
+        return jsonify({"recording": False, "text": "", "error": "未初始化"})
     return jsonify(voice.get_result())

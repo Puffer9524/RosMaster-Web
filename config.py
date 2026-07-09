@@ -53,7 +53,6 @@ SOUND_DIR = os.environ.get("ROSMASTER_SOUND_DIR", "/home/jetson/sound")
 # 录音设备: arecord -l → card 2: XFMDPV0018 (XFM-DP-V0.0.18 麦克风阵列)
 # ALSA 设备名: plughw:<card>,<device>
 VOICE_ALSA_DEVICE = os.environ.get("ROSMASTER_VOICE_ALSA", "plughw:2,0")
-VOICE_RECORD_SECONDS = float(os.environ.get("ROSMASTER_VOICE_DURATION", "5"))
 # 是否自动执行识别到的运动指令
 VOICE_AUTO_EXEC = os.environ.get("ROSMASTER_VOICE_AUTO_EXEC", "1") == "1"
 

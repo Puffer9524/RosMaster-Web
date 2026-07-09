@@ -33,3 +33,6 @@ ehthumbs.db
 *.swp
 *.swo
 *~
+
+# --- 录音文件 ---
+recordings/

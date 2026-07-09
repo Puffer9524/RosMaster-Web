@@ -2,24 +2,25 @@
 语音识别服务 — arecord 录音 + 科大讯飞 WebSocket API 转文字
 
 对照 TonyPi CustomFunctions/STT_Control.py:
-    - record_to_wav()   → arecord 子进程录音
+    - record_pcm()        → arecord 子进程录音
     - xunfei_transcribe() → 讯飞 WebSocket API 实时流式识别
     - 中文关键词 → 运动指令映射
+
+交互方式:
+    点「开始录音」→ 后台 arecord 开始录
+    点「停止录音」→ 终止录音 → 讯飞识别 → 显示结果
 
 硬件: card 2: XFM-DP-V0.0.18 USB 麦克风阵列
 依赖: websocket-client (pip install websocket-client)
 """
 import os
-import sys
-import time
 import json
 import base64
 import hashlib
 import hmac
-import struct
 import subprocess
 import threading
-import tempfile
+import time
 import ssl
 from datetime import datetime
 from time import mktime
@@ -35,45 +36,36 @@ STATUS_FIRST_FRAME = 0
 STATUS_CONTINUE_FRAME = 1
 STATUS_LAST_FRAME = 2
 
+# ── 录音文件保存目录 ──
+_PCM_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "recordings")
+
 
 class VoiceService:
     """语音识别服务 (科大讯飞)
 
-    对照 TonyPi STT_Control 的架构:
-        arecord → 原始 PCM 文件 → 讯飞 WebSocket → 中文文本 → 关键词匹配 → 运动
-
     使用方式:
         voice = VoiceService(alsa_device="plughw:2,0", motion_callback=callback)
-        voice.start()                  # 启动后台线程
-        voice.listen_once()            # 单次: 录音 → 识别 → 执行
-        result = voice.get_result()    # 获取最新结果
-        voice.stop()
+        voice.start_recording()    # 开始录音
+        voice.stop_and_transcribe()  # 停止录音并识别
+        result = voice.get_result()
     """
 
-    # ── 中文关键词 → 运动动作 映射表 (对照 STT_Control._xunfei_keywords) ──
+    # ── 中文关键词 → 运动动作映射 (对照 STT_Control._xunfei_keywords) ──
     KEYWORD_MAP = {
-        # 前进
         "往前走": ("forward", 0.5), "前进": ("forward", 0.5),
         "直走": ("forward", 0.5), "向前走": ("forward", 0.5),
-        # 后退
         "往后退": ("backward", 0.5), "后退": ("backward", 0.5),
         "向后走": ("backward", 0.5), "倒车": ("backward", 0.5),
-        # 左转
         "左转": ("turn_left", 1.0), "向左转": ("turn_left", 1.0),
         "往左转": ("turn_left", 1.0),
-        # 右转
         "右转": ("turn_right", 1.0), "向右转": ("turn_right", 1.0),
         "往右转": ("turn_right", 1.0),
-        # 左移 (麦克纳姆轮)
         "向左移": ("strafe_left", 0.5), "左移": ("strafe_left", 0.5),
         "往左移": ("strafe_left", 0.5),
-        # 右移
         "向右移": ("strafe_right", 0.5), "右移": ("strafe_right", 0.5),
         "往右移": ("strafe_right", 0.5),
-        # 停止
         "停止": ("stop", 0), "停": ("stop", 0),
         "停下": ("stop", 0), "刹车": ("stop", 0),
-        # 加速 / 减速
         "加速": ("speed_up", 0), "快点": ("speed_up", 0),
         "减速": ("speed_down", 0), "慢点": ("speed_down", 0),
     }
@@ -81,7 +73,6 @@ class VoiceService:
     def __init__(
         self,
         alsa_device: str = "plughw:2,0",
-        record_seconds: float = 5.0,
         xunfei_appid: str = "",
         xunfei_api_key: str = "",
         xunfei_api_secret: str = "",
@@ -90,7 +81,6 @@ class VoiceService:
         debug: bool = False,
     ):
         self._alsa_device = alsa_device
-        self._record_seconds = record_seconds
         self._xunfei_appid = xunfei_appid
         self._xunfei_api_key = xunfei_api_key
         self._xunfei_api_secret = xunfei_api_secret
@@ -98,124 +88,165 @@ class VoiceService:
         self._motion_callback = motion_callback
         self._debug = debug
 
-        self._running = False
-        self._enabled = False
-        self._busy = False              # 正在识别中，防止重复触发
-        self._thread: Optional[threading.Thread] = None
+        # 录音状态
+        self._recording = False
+        self._recording_proc: Optional[subprocess.Popen] = None
+        self._pcm_path: Optional[str] = None
 
-        # 最新结果
+        # 最新识别结果
         self._lock = threading.Lock()
         self._latest_text = ""
         self._latest_action = ""
         self._result_count = 0
 
+        # 确保录音目录存在
+        os.makedirs(_PCM_DIR, exist_ok=True)
+
     # ── 公开接口 ──
 
-    def start(self) -> None:
-        """启动后台监听循环"""
-        if self._running:
-            return
-        self._running = True
-        self._enabled = True
-        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
-        self._thread.start()
-        if self._debug:
-            print(f"[VoiceService] 启动, device={self._alsa_device}, "
-                  f"duration={self._record_seconds}s")
+    def start_recording(self) -> bool:
+        """开始录音 (后台 arecord 子进程)"""
+        if self._recording:
+            return True
 
-    def stop(self) -> None:
-        """停止"""
-        self._enabled = False
-        self._running = False
-        if self._debug:
-            print("[VoiceService] 已停止")
+        # 生成带时间戳的文件名，方便调试
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        self._pcm_path = os.path.join(_PCM_DIR, f"voice_{ts}.pcm")
 
-    def is_listening(self) -> bool:
-        return self._enabled and self._running
+        cmd = [
+            "arecord",
+            "-D", self._alsa_device,
+            "-f", "S16_LE",
+            "-r", "16000",
+            "-c", "1",
+            "-t", "raw",
+            self._pcm_path,
+        ]
+
+        if self._debug:
+            print(f"[VoiceService] 开始录音 → {self._pcm_path}")
+            print(f"[VoiceService] 命令: {' '.join(cmd)}")
+
+        try:
+            self._recording_proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            self._recording = True
+            return True
+        except Exception as e:
+            print(f"[VoiceService] arecord 启动失败: {e}")
+            return False
+
+    def stop_and_transcribe(self) -> dict:
+        """停止录音 → 讯飞识别 → 返回结果
+
+        Returns:
+            {"text": "识别文字", "action": "匹配动作", "file": "录音路径"}
+        """
+        if self._recording and self._recording_proc:
+            # 终止 arecord
+            self._recording_proc.terminate()
+            try:
+                self._recording_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self._recording_proc.kill()
+            self._recording = False
+            self._recording_proc = None
+
+        if self._debug:
+            print(f"[VoiceService] 录音已停止")
+
+        # 检查文件
+        if not self._pcm_path or not os.path.exists(self._pcm_path):
+            return {
+                "text": "",
+                "action": "",
+                "file": self._pcm_path or "",
+                "error": "录音文件不存在",
+            }
+
+        file_size = os.path.getsize(self._pcm_path)
+        actual_sec = file_size / (16000 * 2)
+        if self._debug:
+            print(f"[VoiceService] 录音文件: {self._pcm_path} "
+                  f"({file_size} bytes, {actual_sec:.1f}秒)")
+
+        if file_size < 1600:  # < 0.05 秒, 基本没声音
+            return {
+                "text": "",
+                "action": "",
+                "file": self._pcm_path,
+                "error": f"录音过短 ({file_size} bytes)",
+            }
+
+        # 讯飞识别
+        text = self._xunfei_transcribe(self._pcm_path)
+        action = ""
+
+        if text:
+            action = self._match_keyword(text)
+
+            if action and self._auto_exec and self._motion_callback:
+                # 找 duration
+                duration = 0
+                for kw, (act, dur) in sorted(
+                    self.KEYWORD_MAP.items(), key=lambda x: -len(x[0])
+                ):
+                    if kw in text and act == action:
+                        duration = dur
+                        break
+                self._motion_callback(action, duration)
+
+        with self._lock:
+            self._latest_text = text
+            self._latest_action = action
+            self._result_count += 1
+
+        return {
+            "text": text,
+            "action": action,
+            "file": self._pcm_path,
+        }
 
     def get_result(self) -> dict:
-        """获取最新识别结果"""
+        """获取最新状态和结果"""
         with self._lock:
             return {
-                "listening": self._enabled,
-                "busy": self._busy,
+                "recording": self._recording,
                 "text": self._latest_text,
                 "action": self._latest_action,
                 "count": self._result_count,
             }
 
-    def listen_once(self) -> Optional[str]:
-        """同步: 录音 → 识别 → 匹配 → 执行 (一次性, 供外部手动调用)"""
-        self._busy = True
-        try:
-            text = self._record_and_recognize()
-            if text and self._debug:
-                print(f"[VoiceService] 识别: '{text}'")
-            if text:
-                self._match_and_execute(text)
-            return text
-        finally:
-            self._busy = False
+    def is_recording(self) -> bool:
+        return self._recording
 
-    # ── 后台监听循环 ──
+    def stop(self) -> None:
+        """清理: 如果还在录就先停止"""
+        if self._recording:
+            self.stop_and_transcribe()
+        if self._debug:
+            print("[VoiceService] 已停止")
 
-    def _listen_loop(self) -> None:
-        """后台循环: 持续监听 → 识别 → 执行 (对照 TonyPi 的持续监听模式)"""
-        while self._running:
-            if not self._enabled:
-                time.sleep(0.2)
-                continue
+    # ── 关键词匹配 (对照 STT_Control._match_xunfei_action) ──
 
-            self._busy = True
-            try:
-                text = self._record_and_recognize()
-                if text:
-                    self._match_and_execute(text)
-            except Exception as e:
-                print(f"[VoiceService] 循环异常: {e}")
-            finally:
-                self._busy = False
-
-            # 两次识别之间短暂停顿
-            time.sleep(0.3)
-
-    # ── 关键词匹配 & 执行 ──
-
-    def _match_and_execute(self, text: str) -> None:
-        """匹配关键词 → 回调执行 (对照 STT_Control._match_xunfei_action)"""
-        text = text.strip()
-        matched_action = None
-        matched_duration = 0
-
-        # 按关键词长度降序排列, 优先匹配长词
-        for keyword, (action, duration) in sorted(
+    def _match_keyword(self, text: str) -> str:
+        """匹配关键词, 返回动作名或空串"""
+        for keyword, (action, _) in sorted(
             self.KEYWORD_MAP.items(), key=lambda x: -len(x[0])
         ):
             if keyword in text:
-                matched_action = action
-                matched_duration = duration
                 if self._debug:
                     print(f"[VoiceService] 关键词 '{keyword}' → 动作 '{action}'")
-                break
-
-        with self._lock:
-            self._latest_text = text
-            self._result_count += 1
-            self._latest_action = matched_action or ""
-
-        if matched_action and self._auto_exec and self._motion_callback:
-            self._motion_callback(matched_action, matched_duration)
+                return action
+        return ""
 
     # ══════════════════════════════════════════
     # 科大讯飞 WebSocket API (完全参照 TonyPi STT_Control.py)
     # ══════════════════════════════════════════
 
     def _create_xunfei_url(self) -> str:
-        """生成讯飞 WebSocket 鉴权 URL
-
-        对照 STT_Control.py _create_xunfei_url() (行 183-202):
-            HMAC-SHA256 签名 → Base64 → WebSocket URL
-        """
+        """生成讯飞 WebSocket 鉴权 URL"""
         url = 'wss://ws-api.xfyun.cn/v2/iat'
         now = datetime.now()
         date = format_date_time(mktime(now.timetuple()))
@@ -248,25 +279,22 @@ class VoiceService:
         }
         return url + '?' + urlencode(v)
 
-    def xunfei_transcribe(self, wav_path: str) -> str:
+    def _xunfei_transcribe(self, pcm_path: str) -> str:
         """读取 PCM 文件，调用讯飞 API 转文字
 
-        对照 STT_Control.py xunfei_transcribe() (行 204-343):
-            逐帧读取 PCM → Base64 → WebSocket → JSON 解析 → 拼接文本
+        对照 STT_Control.py xunfei_transcribe() (行 204-343)
         """
-        if not os.path.exists(wav_path):
-            print(f"[VoiceService] 文件不存在: {wav_path}")
+        if not os.path.exists(pcm_path):
+            print(f"[VoiceService] 文件不存在: {pcm_path}")
             return ""
 
-        file_size = os.path.getsize(wav_path)
-        if file_size < 100:
-            print(f"[VoiceService] 音频文件过小 ({file_size} bytes)")
-            return ""
+        file_size = os.path.getsize(pcm_path)
+        if self._debug:
+            print(f"[VoiceService] 发送讯飞识别: {file_size} bytes")
 
         ws_url = self._create_xunfei_url()
         result_queue = Queue()
 
-        # ── on_message: 解析讯飞 JSON 响应 ──
         def on_message(ws, message):
             try:
                 resp = json.loads(message)
@@ -299,7 +327,7 @@ class VoiceService:
                 interval = 0.04
                 status = STATUS_FIRST_FRAME
 
-                with open(wav_path, "rb") as fp:
+                with open(pcm_path, "rb") as fp:
                     while True:
                         buf = fp.read(frame_size)
                         if not buf:
@@ -375,74 +403,3 @@ class VoiceService:
         if result and self._debug:
             print(f"[VoiceService] 讯飞识别: '{result}'")
         return result
-
-    # ══════════════════════════════════════════
-    # 录音 (对照 TonyPi STT_Control.record_to_wav)
-    # ══════════════════════════════════════════
-
-    def record_pcm(self, save_path: Optional[str] = None,
-                   duration: Optional[float] = None) -> Optional[str]:
-        """arecord 录音 → 原始 PCM
-
-        对照 STT_Control.py record_to_wav() (行 349-395):
-            arecord -D plughw:2,0 -d 5 -f S16_LE -r 16000 -c 1 -t raw
-        """
-        if save_path is None:
-            save_path = tempfile.mktemp(suffix=".pcm")
-        if duration is None:
-            duration = self._record_seconds
-
-        if self._debug:
-            print(f"[VoiceService] 录音中 ({duration}秒)...")
-
-        cmd = [
-            "arecord",
-            "-D", self._alsa_device,
-            "-d", str(int(duration)),
-            "-f", "S16_LE",
-            "-r", "16000",
-            "-c", "1",
-            "-t", "raw",
-            save_path,
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f"[VoiceService] arecord 错误: {result.stderr.strip()}")
-            try:
-                os.unlink(save_path)
-            except OSError:
-                pass
-            return None
-
-        file_size = os.path.getsize(save_path)
-        if file_size < 100:
-            print(f"[VoiceService] 录音过小 ({file_size} bytes), 可能没收到声音")
-            try:
-                os.unlink(save_path)
-            except OSError:
-                pass
-            return None
-
-        if self._debug:
-            actual_sec = file_size / (16000 * 2)
-            print(f"[VoiceService] 录音完成 ({file_size} bytes, {actual_sec:.1f}秒)")
-
-        return save_path
-
-    def _record_and_recognize(self) -> str:
-        """完整流程: 录音 → 讯飞识别 → 返回文字"""
-        pcm_path = self.record_pcm()
-        if pcm_path is None:
-            return ""
-
-        text = self.xunfei_transcribe(pcm_path)
-
-        # 清理临时文件
-        try:
-            os.unlink(pcm_path)
-        except OSError:
-            pass
-
-        return text

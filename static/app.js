@@ -584,48 +584,46 @@
     const toggleBtn  = document.getElementById("btn-voice-toggle");
     const resultEl   = document.getElementById("voice-result");
     let voiceActive  = false;
-    let pollTimer    = null;
 
     if (!toggleBtn || !resultEl) return;
 
     toggleBtn.addEventListener("click", () => {
       if (voiceActive) {
-        // 关闭
-        post("/api/voice/stop").then(() => {
+        // 停止录音 → 识别
+        toggleBtn.textContent = "识别中...";
+        toggleBtn.disabled = true;
+        post("/api/voice/stop").then((res) => {
           voiceActive = false;
-          toggleBtn.textContent = "开始监听";
+          toggleBtn.textContent = "开始录音";
           toggleBtn.classList.remove("voice-on");
           toggleBtn.classList.add("voice-off");
-          resultEl.textContent = "";
-          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          toggleBtn.disabled = false;
+
+          if (res.text) {
+            if (res.action) {
+              resultEl.innerHTML = `<span class="voice-cmd">🗣 "${res.text}" → ${res.action}</span>`;
+            } else {
+              resultEl.innerHTML = `<span class="voice-text">🗣 "${res.text}" (未匹配)</span>`;
+            }
+          } else if (res.error) {
+            resultEl.innerHTML = `<span class="voice-text">⚠ ${res.error}</span>`;
+          } else {
+            resultEl.innerHTML = `<span class="voice-text">未识别到语音</span>`;
+          }
         });
       } else {
-        // 开启
+        // 开始录音
         post("/api/voice/start").then(() => {
           voiceActive = true;
-          toggleBtn.textContent = "● 监听中...";
+          toggleBtn.textContent = "● 录音中... 点击停止";
           toggleBtn.classList.remove("voice-off");
           toggleBtn.classList.add("voice-on");
-          // 轮询识别结果
-          pollTimer = setInterval(() => {
-            getJSON("/api/voice").then((res) => {
-              if (!voiceActive) return;
-              if (res.text) {
-                if (res.action) {
-                  resultEl.innerHTML = `<span class="voice-cmd">🗣 "${res.text}" → ${res.action}</span>`;
-                } else {
-                  resultEl.innerHTML = `<span class="voice-text">🗣 "${res.text}" (未匹配)</span>`;
-                }
-                // 2 秒后清屏
-                setTimeout(() => { if (resultEl) resultEl.innerHTML = ""; }, 2000);
-              }
-            });
-          }, 500);
+          resultEl.innerHTML = "";
         });
       }
     });
 
-    // 页面关闭时停止语音
+    // 页面关闭时停止录音
     window.addEventListener("beforeunload", () => {
       if (voiceActive) post("/api/voice/stop");
     });

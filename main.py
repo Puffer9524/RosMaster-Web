@@ -29,7 +29,7 @@ from config import (
     SERIAL_PORT, CAR_TYPE, SERVER_HOST, SERVER_PORT,
     CAMERA_ID, FRAME_WIDTH, FRAME_HEIGHT, JPEG_QUALITY,
     MOTION_TIMEOUT, SENSOR_INTERVAL, DEFAULT_SPEED, ROTATION_FACTOR, DEBUG,
-    VOICE_ALSA_DEVICE, VOICE_RECORD_SECONDS,
+    VOICE_ALSA_DEVICE,
     XUNFEI_APPID, XUNFEI_API_KEY, XUNFEI_API_SECRET, VOICE_AUTO_EXEC,
 )
 from driver.serial_driver import SerialDriver      # 对照: self.g_bot = Rosmaster()
@@ -123,7 +123,6 @@ def main():
     logger.info("    初始化语音识别服务...")
     voice_svc = VoiceService(
         alsa_device=VOICE_ALSA_DEVICE,
-        record_seconds=VOICE_RECORD_SECONDS,
         xunfei_appid=XUNFEI_APPID,
         xunfei_api_key=XUNFEI_API_KEY,
         xunfei_api_secret=XUNFEI_API_SECRET,
