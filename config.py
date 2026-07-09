@@ -72,7 +72,7 @@ TTS_VOLUME = int(os.environ.get("TTS_VOLUME", "100"))     # 音量 0-100
 TTS_PLAY_DEVICE = os.environ.get("TTS_PLAY_DEVICE", "")   # aplay -D 设备, 空=自动探测
 
 # ── 大模型 LLM (对照 TonyPi LLM_Control: DeepSeek Chat API) ──
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-4a7a0816a0fc4b7d939dbad2bc4a6cb3")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-619cde7eb0b04dc896c3b2014e03da71")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
 
