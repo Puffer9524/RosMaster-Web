@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Rosmaster 遥控面板</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ====== 状态栏 ====== -->
+<div id="status-bar">
+  <span class="title">Rosmaster 遥控面板</span>
+  <span id="conn-indicator" class="conn disconnected">● 未连接</span>
+</div>
+
+<!-- ====== 视频 ====== -->
+<div id="video-container">
+  <img id="video" src="video_feed" alt="视频流加载中...">
+</div>
+
+<!-- ====== 传感器栏 ====== -->
+<div id="sensor-bar">
+  <span class="sensor-item">🌡 <span id="val-temp">--</span>°C</span>
+  <span class="sensor-item">💧 <span id="val-humi">--</span>%</span>
+  <span class="sensor-item">🔋 <span id="val-batt">--</span>V</span>
+</div>
+
+<!-- ====== 控制区 ====== -->
+<div id="control-area">
+
+  <!-- 方向控制 -->
+  <div id="direction-pad">
+    <button class="dir-btn" id="btn-Q" data-key="Q">↺</button>
+    <button class="dir-btn" id="btn-W" data-key="W">▲</button>
+    <button class="dir-btn" id="btn-E" data-key="E">↻</button>
+    <button class="dir-btn" id="btn-A" data-key="A">◀</button>
+    <button class="dir-btn stop-btn" id="btn-STOP" data-key=" ">STOP</button>
+    <button class="dir-btn" id="btn-D" data-key="D">▶</button>
+    <button class="dir-btn placeholder"></button>
+    <button class="dir-btn" id="btn-S" data-key="S">▼</button>
+    <button class="dir-btn placeholder"></button>
+  </div>
+
+  <!-- 灯光控制 -->
+  <div id="light-panel">
+    <div class="panel-label">灯光颜色</div>
+    <div id="color-btns">
+      <button class="color-btn" data-r="255" data-g="0"   data-b="0"   style="background:#ff0000;"></button>
+      <button class="color-btn" data-r="0"   data-g="255" data-b="0"   style="background:#00ff00;"></button>
+      <button class="color-btn" data-r="0"   data-g="0"   data-b="255" style="background:#0066ff;"></button>
+      <button class="color-btn" data-r="255" data-g="255" data-b="255" style="background:#ffffff;"></button>
+      <button class="color-btn" data-r="255" data-g="255" data-b="0"   style="background:#ffff00;"></button>
+      <button class="color-btn" data-r="200" data-g="0"   data-b="255" style="background:#cc00ff;"></button>
+      <button class="color-btn off-btn"       data-r="0"   data-g="0"   data-b="0"   style="background:#333;">✕</button>
+    </div>
+    <div class="panel-label">灯光特效</div>
+    <div id="effect-btns">
+      <button class="effect-btn" data-effect="1">流水灯</button>
+      <button class="effect-btn" data-effect="2">跑马灯</button>
+      <button class="effect-btn" data-effect="3">呼吸灯</button>
+      <button class="effect-btn" data-effect="4">渐变灯</button>
+      <button class="effect-btn" data-effect="5">星光</button>
+      <button class="effect-btn" data-effect="6">电量</button>
+      <button class="effect-btn effect-off" data-effect="0">关灯效</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 速度档位 ====== -->
+<div id="speed-bar">
+  <span class="panel-label">速度:</span>
+  <button class="speed-btn" data-level="0">30%</button>
+  <button class="speed-btn active" data-level="1">60%</button>
+  <button class="speed-btn" data-level="2">100%</button>
+  <span style="margin-left:16px;"></span>
+  <button class="beep-btn" id="btn-beep">🔊 蜂鸣</button>
+</div>
+
+<!-- ====== 语音控制 ====== -->
+<div id="voice-bar">
+  <span class="panel-label">🎤 语音:</span>
+  <button id="btn-voice-toggle" class="voice-btn voice-off">开始监听</button>
+  <span id="voice-result" class="voice-result"></span>
+</div>
+
+<!-- ====== 蜂鸣器音效 ====== -->
+<div id="beep-effect-bar">
+  <span class="panel-label">音效:</span>
+  <button class="sound-btn" data-sound="1">流水声</button>
+  <button class="sound-btn" data-sound="2">马蹄声</button>
+  <button class="sound-btn" data-sound="3">呼吸声</button>
+  <button class="sound-btn" data-sound="4">警报声</button>
+  <button class="sound-btn" data-sound="5">随机鸟鸣</button>
+  <button class="sound-btn" data-sound="6">SOS</button>
+  <button class="sound-btn sound-off" data-sound="0">静音</button>
+</div>
+
+<!-- ====== 车载歌曲播放 ====== -->
+<div id="music-bar">
+  <span class="panel-label">🎵 歌曲:</span>
+  <select id="music-select">
+    <option value="">-- 加载中... --</option>
+  </select>
+  <button id="btn-music-play">▶ 播放</button>
+  <button id="btn-music-del" title="删除选中歌曲">🗑</button>
+</div>
+
+<!-- ====== 上传歌曲 ====== -->
+<div id="upload-bar">
+  <span class="panel-label">📤 上传:</span>
+  <input type="file" id="upload-file" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a">
+  <input type="text" id="upload-id" placeholder="ID(选填)" maxlength="50" size="12">
+  <button id="btn-upload">上传</button>
+  <span id="upload-status"></span>
+</div>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual environment ---
+venv/
+.venv/
+env/
+.env
+
+# --- Reasonix ---
+reasonix.toml
+.reasonix/
+
+# --- CodeGraph ---
+.codegraph/
+
+# --- OS generated ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

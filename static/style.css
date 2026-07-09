@@ -1,0 +1,184 @@
+/* ====== 全局 ====== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #1a1a2e; color: #eee;
+  max-width: 720px; margin: 0 auto;
+  user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ====== 状态栏 ====== */
+#status-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; background: #16213e;
+}
+.title { font-size: 16px; font-weight: bold; }
+.conn { font-size: 13px; padding: 3px 10px; border-radius: 12px; }
+.conn.connected   { background: #1b5e20; color: #81c784; }
+.conn.disconnected { background: #4a1a1a; color: #ef9a9a; }
+.conn.connecting   { background: #5a4a00; color: #fff176; }
+
+/* ====== 视频 ====== */
+#video-container {
+  background: #000; text-align: center;
+  min-height: 240px;
+}
+#video { width: 100%; display: block; }
+
+/* ====== 传感器栏 ====== */
+#sensor-bar {
+  display: flex; justify-content: space-around;
+  padding: 8px 12px; background: #16213e;
+  font-size: 14px; border-top: 1px solid #0f3460;
+}
+.sensor-item { font-weight: bold; }
+
+/* ====== 控制区 ====== */
+#control-area {
+  display: flex; gap: 8px; padding: 8px;
+}
+
+/* ── 方向按钮 ── */
+#direction-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-template-rows:    repeat(3, 56px);
+  gap: 3px; flex-shrink: 0;
+}
+.dir-btn {
+  border: none; border-radius: 8px;
+  font-size: 20px; font-weight: bold;
+  background: #0f3460; color: #eee;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dir-btn:active, .dir-btn.active {
+  background: #e94560;
+}
+.dir-btn.placeholder { background: transparent; }
+.stop-btn {
+  font-size: 11px; background: #b71c1c; color: #fff;
+  grid-column: span 1;
+}
+.stop-btn:active, .stop-btn.active { background: #ff1744; }
+
+/* ── 灯光面板 ── */
+#light-panel { flex: 1; min-width: 0; }
+.panel-label { font-size: 12px; color: #8899aa; margin: 4px 0 3px 2px; }
+
+#color-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.color-btn {
+  width: 32px; height: 32px; border: 2px solid #444;
+  border-radius: 50%; cursor: pointer;
+}
+.color-btn:active { border-color: #fff; transform: scale(1.15); }
+.off-btn { color: #888; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+
+#effect-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.effect-btn {
+  padding: 5px 10px; border: 1px solid #0f3460; border-radius: 14px;
+  background: #16213e; color: #ccc; font-size: 12px; cursor: pointer;
+}
+.effect-btn:active { background: #0f3460; color: #fff; }
+.effect-btn.active-effect { background: #1b5e20; color: #81c784; border-color: #2e7d32; }
+.effect-off { border-color: #b71c1c; color: #ef9a9a; }
+
+/* ====== 速度栏 ====== */
+#speed-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; background: #16213e;
+}
+.speed-btn {
+  padding: 5px 18px; border: 1px solid #0f3460; border-radius: 14px;
+  background: transparent; color: #ccc; font-size: 13px; cursor: pointer;
+}
+.speed-btn.active { background: #0f3460; color: #fff; border-color: #e94560; }
+
+/* 蜂鸣器按钮 */
+.beep-btn {
+  padding: 5px 18px; border: 1px solid #0f3460; border-radius: 14px;
+  background: transparent; color: #ccc; font-size: 13px; cursor: pointer;
+}
+.beep-btn.active { background: #e65100; color: #fff; border-color: #ff9800; }
+
+/* 蜂鸣器音效栏 */
+#beep-effect-bar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 6px 12px; background: #16213e; border-top: 1px solid #0f3460;
+}
+.sound-btn {
+  padding: 4px 10px; border: 1px solid #0f3460; border-radius: 14px;
+  background: #16213e; color: #ccc; font-size: 11px; cursor: pointer;
+}
+.sound-btn:active { background: #0f3460; color: #fff; }
+.sound-btn.active-sound { background: #e65100; color: #fff; border-color: #ff9800; }
+.sound-off { border-color: #b71c1c; color: #ef9a9a; }
+
+/* 语音识别栏 */
+#voice-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; background: #16213e; border-top: 1px solid #0f3460;
+}
+.voice-btn {
+  padding: 5px 16px; border: 1px solid #0f3460; border-radius: 14px;
+  background: #1a1a2e; color: #ccc; font-size: 13px; cursor: pointer;
+  transition: all 0.2s;
+}
+.voice-btn.voice-off { border-color: #2e7d32; color: #66bb6a; }
+.voice-btn.voice-on  { border-color: #e65100; color: #ff9800; background: #2a1a0a; animation: voice-pulse 1.5s infinite; }
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 4px #e65100; }
+  50%      { box-shadow: 0 0 12px #ff9800; }
+}
+.voice-result {
+  font-size: 12px; color: #aaa; flex: 1;
+}
+.voice-result .voice-cmd  { color: #66bb6a; }
+.voice-result .voice-text { color: #ffcc80; }
+
+/* 车载歌曲栏 */
+#music-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; background: #16213e; border-top: 1px solid #0f3460;
+}
+#music-select {
+  flex: 1; padding: 5px 8px; border: 1px solid #0f3460; border-radius: 8px;
+  background: #1a1a2e; color: #ccc; font-size: 12px; max-width: 220px;
+}
+#music-select optgroup { background: #16213e; color: #8899aa; font-style: normal; }
+#music-select option { background: #1a1a2e; color: #ccc; }
+#btn-music-play {
+  padding: 5px 14px; border: 1px solid #2e7d32; border-radius: 14px;
+  background: #1b5e20; color: #81c784; font-size: 12px; cursor: pointer;
+}
+#btn-music-play:active { background: #2e7d32; }
+#btn-music-del {
+  padding: 5px 10px; border: 1px solid #b71c1c; border-radius: 14px;
+  background: transparent; color: #ef9a9a; font-size: 14px; cursor: pointer;
+}
+#btn-music-del:active { background: #b71c1c; color: #fff; }
+
+/* 上传歌曲栏 */
+#upload-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 12px; background: #16213e; border-top: 1px solid #0f3460;
+}
+#upload-file {
+  max-width: 160px; font-size: 11px; color: #ccc;
+}
+#upload-file::file-selector-button {
+  padding: 4px 10px; border: 1px solid #0f3460; border-radius: 10px;
+  background: #0f3460; color: #ccc; font-size: 11px; cursor: pointer;
+}
+#upload-id {
+  padding: 4px 8px; border: 1px solid #0f3460; border-radius: 8px;
+  background: #1a1a2e; color: #ccc; font-size: 11px;
+}
+#btn-upload {
+  padding: 5px 14px; border: 1px solid #0f3460; border-radius: 14px;
+  background: #0f3460; color: #ccc; font-size: 12px; cursor: pointer;
+}
+#btn-upload:active { background: #1a5276; color: #fff; }
+#upload-status { font-size: 11px; color: #81c784; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#upload-status.error { color: #ef9a9a; }
