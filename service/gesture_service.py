@@ -30,11 +30,23 @@
 
 注意:
     HandGestureDetector 是编译好的 ARM64 .so 文件 (handGesture.cpython-38-aarch64-linux-gnu.so),
-    仅在 Jetson (aarch64 Linux, Python 3.8) 上可用。
+    位于 ../../rosmaster/ 目录下, 仅在 Jetson (aarch64 Linux, Python 3.8) 上可用。
     在其他平台上, 手势控制服务会以降级模式运行 (不执行检测).
 """
+import sys
+import os
 import threading
 import time
+
+# ── 确保 handGesture 模块路径在 sys.path 中 ──
+# handGesture.cpython-38-aarch64-linux-gnu.so 位于 ../../rosmaster/
+# 通过 __file__ 动态计算, 不依赖父目录名称
+_ROSMASTER_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "rosmaster"
+)
+if os.path.isdir(_ROSMASTER_DIR) and _ROSMASTER_DIR not in sys.path:
+    sys.path.insert(0, _ROSMASTER_DIR)
 
 # ── 尝试导入 HandGestureDetector (仅 ARM64 Linux / Python 3.8 可用) ──
 try:
@@ -73,8 +85,8 @@ class GestureService:
     # 动作冷却时间 [秒] (对照 app_sim2.py: now - last_gesture_time > 1)
     ACTION_COOLDOWN = 1.0
 
-    # 跳帧: 每 N 帧检测一次手势 (节省 CPU)
-    FRAME_SKIP = 2
+    # 跳帧: 每 N 帧检测一次手势 (1 = 每帧检测, 对照 app_sim2.py 逐帧处理)
+    FRAME_SKIP = 1
 
     def __init__(self, motion_callback=None, sound_callback=None,
                  debug: bool = False):
