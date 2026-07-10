@@ -113,7 +113,7 @@ class GestureService:
                       "手势控制以降级模式运行")
 
         # 手势识别状态 (对照 app_sim2.py update_camera_frame 局部变量)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # 可重入锁 (process_frame 和 _execute_gesture 嵌套使用)
         self._last_gesture = "Unknown"
         self._gesture_count = 0
         self._last_action_time = 0.0

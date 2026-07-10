@@ -161,25 +161,33 @@ class FireService:
         if frame_count % self.FRAME_SKIP != 0:
             # 如果最近检测到火焰 (0.5s 内), 继续画框
             now = time.time()
-            if self._event_id > 0 and now - self._event_time < 0.5:
+            with self._lock:
+                eid = self._event_id
+                etime = self._event_time
+            if eid > 0 and now - etime < 0.5:
                 return self._draw_fire_box(frame)
             return frame
 
         now = time.time()
 
         # 如果刚刚检测到火焰 (0.5s 内), 继续显示上次的框, 不发送新帧
-        if self._event_id > 0 and now - self._event_time < 0.5:
+        with self._lock:
+            eid = self._event_id
+            etime = self._event_time
+        if eid > 0 and now - etime < 0.5:
             return self._draw_fire_box(frame)
 
         # 连接 AI 服务器
         if self._aisock is None:
             self._connect()
 
-        if self._aisock is None:
+        # 单次读取, 避免竞态 (stop() 可能在另一个线程中关闭连接)
+        sock = self._aisock
+        if sock is None:
             return frame  # 连接失败, 跳过
 
         # 发送帧到 AI 服务器
-        reply = self._send_frame(frame, self._aisock)
+        reply = self._send_frame(frame, sock)
         if reply is None:
             # 连接断开
             self._disconnect()
@@ -242,9 +250,11 @@ class FireService:
             cv2.rectangle(frame, (x1,y1), (x2,y2), (0,0,255), 2)
             cv2.putText(frame, "fire", (x,y), FONT_HERSHEY_TRIPLEX, 1, (0,255,0), 1)
         """
-        if not self._event_box or len(self._event_box) < 4:
+        with self._lock:
+            box = list(self._event_box) if self._event_box else []
+        if not box or len(box) < 4:
             return frame
-        x1, y1, x2, y2 = self._event_box
+        x1, y1, x2, y2 = box
         # 边界检查
         h, w = frame.shape[:2]
         x1 = max(0, min(x1, w - 1))
