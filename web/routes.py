@@ -645,8 +645,10 @@ def create_video_feed(camera_driver, quality: int = 65):
             # ── 运行帧处理器 (对照 app_sim2.py 摄像头循环中的火情/手势检测) ──
             try:
                 frame = run_frame_processors(frame, frame_count)
-            except Exception:
-                pass
+            except Exception as e:
+                import traceback as _tb
+                print(f"[video_feed] 帧处理器异常: {e}")
+                _tb.print_exc()
 
             # 编码 JPEG
             _, jpeg = cv2.imencode(".jpg", frame,

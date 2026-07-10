@@ -109,20 +109,19 @@ class GestureService:
 
         # 手势检测器 (仅 ARM64 平台可用)
         self._detector = None
+        self._detector_error = ""  # 加载失败原因 (供前端诊断)
         if _HAS_GESTURE_DETECTOR:
             try:
                 self._detector = HandGestureDetector()
                 self._detector.setLogger(print if debug else lambda _: None)
-                if self._debug:
-                    print("[GestureService] HandGestureDetector 初始化成功")
+                print("[GestureService] ✓ HandGestureDetector 加载成功")
             except Exception as e:
-                if self._debug:
-                    print(f"[GestureService] HandGestureDetector 初始化失败: {e}")
+                self._detector_error = f"初始化失败: {e}"
+                print(f"[GestureService] ✗ HandGestureDetector {self._detector_error}")
                 self._detector = None
         else:
-            if self._debug:
-                print("[GestureService] HandGestureDetector 不可用 (非 ARM64 平台), "
-                      "手势控制以降级模式运行")
+            self._detector_error = "handGesture 模块未找到 (非 ARM64 Linux / Python 版本不匹配)"
+            print(f"[GestureService] ✗ {self._detector_error}")
 
         # 手势识别状态 (对照 app_sim2.py update_camera_frame 局部变量)
         self._lock = threading.RLock()  # 可重入锁 (process_frame 和 _execute_gesture 嵌套使用)
@@ -204,6 +203,7 @@ class GestureService:
                 "gesture": self._latest_gesture,
                 "action": self._latest_action,
                 "has_detector": self.has_detector,
+                "detector_error": self._detector_error,
             }
 
     # ── 帧处理器 (注册到 camera_driver.process_frame) ──
@@ -223,7 +223,15 @@ class GestureService:
             return frame
 
         if self._detector is None:
-            return frame  # 无检测器, 降级模式
+            # 降级模式: 只打印一次警告
+            if not getattr(self, "_warned_no_detector", False):
+                self._warned_no_detector = True
+                print(f"[GestureService] ⚠ 手势控制已开启但检测器不可用: {self._detector_error}")
+            return frame
+
+        # 重置降级警告标记 (检测器恢复后重新启用)
+        if getattr(self, "_warned_no_detector", False):
+            self._warned_no_detector = False
 
         self._frame_count = frame_count
 

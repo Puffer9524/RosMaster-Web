@@ -717,10 +717,20 @@
       handActive = !handActive;
       post("/api/hand_ctrl", { enable: handActive }).then(() => {
         if (handActive) {
-          handBtn.textContent = "✋ 识别中...";
-          handBtn.classList.remove("hand-off");
-          handBtn.classList.add("hand-on");
-          statusEl.innerHTML = "";
+          // 先查询检测器状态
+          getJSON("/api/hand_ctrl").then((res) => {
+            if (res && !res.has_detector) {
+              statusEl.innerHTML = `<span class="fire-alert">⚠ 手势检测器不可用: ${res.detector_error || "未加载"}</span>`;
+              handBtn.textContent = "✋ 手势控制 (无检测器)";
+              handBtn.classList.remove("hand-off");
+              handBtn.classList.add("hand-on");
+            } else {
+              handBtn.textContent = "✋ 识别中...";
+              handBtn.classList.remove("hand-off");
+              handBtn.classList.add("hand-on");
+              statusEl.innerHTML = "";
+            }
+          });
         } else {
           handBtn.textContent = "✋ 手势控制";
           handBtn.classList.remove("hand-on");

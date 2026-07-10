@@ -63,8 +63,12 @@ def process_frame(frame, frame_count: int = 0):
             result = proc(frame, frame_count)
             if result is not None:
                 frame = result
-        except Exception:
-            pass
+        except Exception as e:
+            # 打印一次错误 (避免刷屏), 带处理器名称
+            import traceback as _tb
+            _name = getattr(proc, "__self__", proc).__class__.__name__ if hasattr(proc, "__self__") else str(proc)
+            print(f"[process_frame] 处理器异常: {_name}: {e}")
+            _tb.print_exc()
     return frame
 
 

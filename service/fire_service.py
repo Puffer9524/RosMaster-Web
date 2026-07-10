@@ -79,8 +79,7 @@ class FireService:
         # 帧计数 (用于跳帧)
         self._frame_count = 0
 
-        if self._debug:
-            print("[FireService] 初始化完成")
+        print(f"[FireService] ✓ 初始化完成 (AI服务器 {self.AI_SERVER_HOST}:{self.AI_SERVER_PORT})")
 
     # ── 公开接口 ──
 
