@@ -10,12 +10,13 @@ Web 方案:
     - 运动控制:     POST /api/motion (摇杆) /api/direction (按钮)
     - 灯光:         POST /api/rgb, /api/rgb_effect, /api/light
     - 蜂鸣器:       POST /api/beep, /api/buzzer
-    - 功能开关:     POST /api/follow_line
+    - 功能开关:     POST /api/follow_line, /api/fire_check, /api/hand_ctrl
     - 舵机/机械臂:  POST /api/servo, /api/arm, /api/arm_array
     - 速度:         POST /api/speed
 """
 import json
 import time
+import cv2
 from flask import Blueprint, Response, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 import os
@@ -30,7 +31,8 @@ _services = {}
 
 def inject_services(motion_svc, light_svc, sensor_svc, serial_drv,
                     voice_svc=None, tts_svc=None, llm_svc=None,
-                    plan_executor=None):
+                    plan_executor=None,
+                    fire_svc=None, gesture_svc=None):
     """注入业务服务引用 (main.py 调用)"""
     _services["motion"] = motion_svc
     _services["light"] = light_svc
@@ -40,6 +42,8 @@ def inject_services(motion_svc, light_svc, sensor_svc, serial_drv,
     _services["tts"] = tts_svc
     _services["llm"] = llm_svc
     _services["plan_executor"] = plan_executor
+    _services["fire"] = fire_svc
+    _services["gesture"] = gesture_svc
 
 
 # =================================================================
@@ -299,6 +303,82 @@ def api_follow_line():
 
 
 # =================================================================
+# 火情监测 API (对照 app_sim2.py toggle_fire_check)
+# =================================================================
+
+@bp.route("/api/fire_check", methods=["POST", "GET"])
+def api_fire_check():
+    """火情监测开关 + 状态查询
+
+    POST: {"enable": true}
+    GET:  返回当前状态 + 最新告警
+
+    对照 app_sim2.py toggle_fire_check():
+        if self.fire_check.get() == 1:
+            print("start fire check ...")
+            self.playSound("fire_check_open")
+        else:
+            print("stop fire check ...")
+            self.playSound("fire_check_close")
+    """
+    fire = _services.get("fire")
+    if not fire:
+        return jsonify({"error": "火情监测服务未初始化"}), 503
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        enable = bool(data.get("enable", False))
+        if enable:
+            fire.start()
+        else:
+            fire.stop()
+        return jsonify({"ok": True, "enabled": fire.enabled})
+
+    # GET: 返回状态 + 最新告警
+    alert = fire.get_latest_alert()
+    return jsonify({
+        "enabled": fire.enabled,
+        "alert": alert,  # None 或 {"x","y","w","h","time"}
+    })
+
+
+# =================================================================
+# 手势控制 API (对照 app_sim2.py toggle_hand_ctrl)
+# =================================================================
+
+@bp.route("/api/hand_ctrl", methods=["POST", "GET"])
+def api_hand_ctrl():
+    """手势控制开关 + 状态查询
+
+    POST: {"enable": true}
+    GET:  返回当前状态 + 最新手势
+
+    对照 app_sim2.py toggle_hand_ctrl():
+        if self.hand_ctrl.get() == 1:
+            print("start hand control...")
+            self.playSound("hand_ctrl_open")
+        else:
+            print("stop hand control...")
+            self.playSound("hand_ctrl_close")
+    """
+    gesture = _services.get("gesture")
+    if not gesture:
+        return jsonify({"error": "手势控制服务未初始化"}), 503
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        enable = bool(data.get("enable", False))
+        if enable:
+            gesture.start()
+        else:
+            gesture.stop()
+        return jsonify({"ok": True, "enabled": gesture.enabled})
+
+    # GET: 返回状态
+    return jsonify(gesture.get_status())
+
+
+# =================================================================
 # 舵机 / 机械臂 API
 # =================================================================
 
@@ -520,28 +600,58 @@ def api_sound_delete():
 # =================================================================
 
 def create_video_feed(camera_driver, quality: int = 65):
-    """创建 MJPEG 视频流生成器
+    """创建 MJPEG 视频流生成器 (集成帧处理器)
 
     对照 app_sim2.py update_camera_frame():
         ret, frame = self.cap.read()
+
+        # 火情检测 (帧处理器)
+        if self.fire_check.get() == 1:
+            ... self.send_frame(frame, self.aisock)
+            ... cv2.rectangle(frame, ...)  # 画火焰框
+
+        # 手势识别 (帧处理器)
+        if self.hand_ctrl.get() == 1:
+            frame, event = self.handGestureDetector.detect(frame)
+            ... 执行手势命令
+
+        # 显示
         frame = cv2.resize(frame, (400, 300))
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(frame)
         photo = ImageTk.PhotoImage(image=image)
         self.image_label.config(image=photo)
+
+    帧处理器通过 camera_driver.add_frame_processor() 注册,
+    由 camera_driver.process_frame() 统一调用。
     """
+
+    # 延迟导入, 避免循环依赖
+    from driver.camera_driver import process_frame as run_frame_processors
 
     def generate():
         t_start = time.time()
         frame_count = 0
         while True:
-            success, jpeg = camera_driver.get_jpeg(quality)
+            # 读取原始帧 (含帧处理器回调)
+            success, frame = camera_driver.get_frame()
             if not success:
                 camera_driver.reconnect()
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n\r\n")
                 time.sleep(0.5)
                 continue
+
+            # ── 运行帧处理器 (对照 app_sim2.py 摄像头循环中的火情/手势检测) ──
+            try:
+                frame = run_frame_processors(frame, frame_count)
+            except Exception:
+                pass
+
+            # 编码 JPEG
+            _, jpeg = cv2.imencode(".jpg", frame,
+                                   [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+            jpeg_bytes = jpeg.tobytes()
 
             frame_count += 1
             elapsed = time.time() - t_start
@@ -550,7 +660,7 @@ def create_video_feed(camera_driver, quality: int = 65):
                 frame_count = 0
 
             yield (b"--frame\r\n"
-                   b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+                   b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
             time.sleep(0.03)  # 控制帧率, 避免撑爆摄像头
 
     return generate

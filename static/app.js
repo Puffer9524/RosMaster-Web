@@ -682,6 +682,111 @@
     });
   })();
 
+  // ====== 火情监测 + 手势控制 (对照 app_sim2.py toggle_fire_check / toggle_hand_ctrl) ======
+  (function () {
+    const fireBtn   = document.getElementById("btn-fire-toggle");
+    const handBtn   = document.getElementById("btn-hand-toggle");
+    const statusEl  = document.getElementById("ai-status");
+    let fireActive  = false;
+    let handActive  = false;
+    let aiPollTimer = null;
+
+    if (!fireBtn || !handBtn || !statusEl) return;
+
+    // ── 火情监测开关 ──
+    fireBtn.addEventListener("click", () => {
+      fireActive = !fireActive;
+      post("/api/fire_check", { enable: fireActive }).then(() => {
+        if (fireActive) {
+          fireBtn.textContent = "🔥 监测中...";
+          fireBtn.classList.remove("fire-off");
+          fireBtn.classList.add("fire-on");
+          statusEl.innerHTML = "";
+        } else {
+          fireBtn.textContent = "🔥 火情监测";
+          fireBtn.classList.remove("fire-on");
+          fireBtn.classList.add("fire-off");
+          statusEl.innerHTML = "";
+        }
+        managePolling();
+      });
+    });
+
+    // ── 手势控制开关 ──
+    handBtn.addEventListener("click", () => {
+      handActive = !handActive;
+      post("/api/hand_ctrl", { enable: handActive }).then(() => {
+        if (handActive) {
+          handBtn.textContent = "✋ 识别中...";
+          handBtn.classList.remove("hand-off");
+          handBtn.classList.add("hand-on");
+          statusEl.innerHTML = "";
+        } else {
+          handBtn.textContent = "✋ 手势控制";
+          handBtn.classList.remove("hand-on");
+          handBtn.classList.add("hand-off");
+          statusEl.innerHTML = "";
+        }
+        managePolling();
+      });
+    });
+
+    // ── 轮询管理 ──
+    function managePolling() {
+      if (fireActive || handActive) {
+        if (!aiPollTimer) {
+          aiPollTimer = setInterval(pollAiStatus, 500);
+        }
+      } else {
+        if (aiPollTimer) {
+          clearInterval(aiPollTimer);
+          aiPollTimer = null;
+        }
+      }
+    }
+
+    // ── 轮询 AI 状态 ──
+    function pollAiStatus() {
+      let html = "";
+
+      if (fireActive) {
+        getJSON("/api/fire_check").then((res) => {
+          if (!res) return;
+          if (res.alert) {
+            const a = res.alert;
+            html += `<span class="fire-alert">🔥 火情告警! (${a.x},${a.y}) ${a.w}x${a.h}</span> `;
+            statusEl.innerHTML = html;
+            // 3秒后清除告警显示
+            setTimeout(() => {
+              if (statusEl.querySelector(".fire-alert")) {
+                statusEl.innerHTML = statusEl.innerHTML.replace(/<span class="fire-alert"[^>]*>.*?<\/span>/g, "");
+              }
+            }, 3000);
+          }
+        });
+      }
+
+      if (handActive) {
+        getJSON("/api/hand_ctrl").then((res) => {
+          if (!res) return;
+          if (res.gesture && res.gesture !== "Unknown") {
+            html += `<span class="hand-gesture">✋ ${res.gesture}</span> `;
+          }
+          if (res.action) {
+            html += `<span class="hand-action">→ ${res.action}</span> `;
+          }
+          statusEl.innerHTML = html || statusEl.innerHTML;
+        });
+      }
+    }
+
+    // 页面关闭时停止 AI 功能
+    window.addEventListener("beforeunload", () => {
+      if (fireActive) post("/api/fire_check", { enable: false });
+      if (handActive) post("/api/hand_ctrl", { enable: false });
+    });
+  })();
+
   // ====== 启动 ======
   startSensorPoll();
 })();

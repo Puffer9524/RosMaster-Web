@@ -37,6 +37,7 @@ from config import (
 )
 from driver.serial_driver import SerialDriver      # 对照: self.g_bot = Rosmaster()
 from driver.camera_driver import CameraDriver       # 对照: self.cap = cv2.VideoCapture(0)
+from driver.camera_driver import add_frame_processor, remove_frame_processor  # 帧处理器注册
 from driver.tts_driver import TTSDriver             # TTS: 文字→语音
 from driver.llm_driver import LLMDriver             # LLM: DeepSeek
 from service.motion_service import MotionService    # 对照: execute_command_with_duration
@@ -45,20 +46,50 @@ from service.sensor_service import SensorService    # 对照: update_iot_labels
 from service.voice_service import VoiceService      # 语音识别
 from service.tts_service import TTSService          # TTS 业务
 from service.llm_service import LLMService          # LLM 业务
+from service.fire_service import FireService        # 火情监测 (对照 toggle_fire_check)
+from service.gesture_service import GestureService  # 手势控制 (对照 toggle_hand_ctrl)
 from web.routes import bp, register_video_route, inject_services
 from utils.logger import get_logger
 
 logger = get_logger("main")
 
 
-def _voice_motion(action: str, duration: float, motion_svc):
-    """语音指令 → 运动执行 (main.py 桥接函数)
+def _voice_motion(action: str, duration: float, motion_svc,
+                  fire_svc=None, gesture_svc=None):
+    """语音指令 → 运动执行 / 功能开关 (main.py 桥接函数)
 
-    对照 VoiceService.COMMAND_MAP 中的 action 字段。
+    对照 VoiceService.KEYWORD_MAP 中的 action 字段。
     duration > 0 时执行 duration 秒后自动停止。
     每 0.3s 续命看门狗，避免被 MotionService 的 0.5s 超时截断。
+
+    扩展支持 fire_check_on/off, hand_ctrl_on/off (对照 app_sim2.py toggle_xxx)
     """
     import time as _time
+
+    # ── 火情监测开关 (对照 app_sim2.py toggle_fire_check) ──
+    if action == "fire_check_on":
+        if fire_svc:
+            fire_svc.start()
+            logger.info("🎤 语音: 开启火情监测")
+        return
+    if action == "fire_check_off":
+        if fire_svc:
+            fire_svc.stop()
+            logger.info("🎤 语音: 关闭火情监测")
+        return
+
+    # ── 手势控制开关 (对照 app_sim2.py toggle_hand_ctrl) ──
+    if action == "hand_ctrl_on":
+        if gesture_svc:
+            gesture_svc.start()
+            logger.info("🎤 语音: 开启手势控制")
+        return
+    if action == "hand_ctrl_off":
+        if gesture_svc:
+            gesture_svc.stop()
+            logger.info("🎤 语音: 关闭手势控制")
+        return
+
     # 速度因子 (取当前 motion_svc.speed 百分比)
     sp = motion_svc.speed / 100.0
     rot = sp * ROTATION_FACTOR
@@ -102,11 +133,14 @@ def _voice_motion(action: str, duration: float, motion_svc):
         motion_svc.execute(vx, vy, vz)
 
 
-def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc):
+def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc,
+                       fire_svc=None, gesture_svc=None):
     """执行 LLM 返回的计划 (main.py 桥接)
 
     对照 TonyPi step_executor.execute():
         遍历 plan["steps"], 逐个执行 action
+
+    扩展支持 fire_check_on/off, hand_ctrl_on/off (对照 app_sim2.py toggle_xxx)
     """
     import time as _time
     steps = plan.get("steps", [])
@@ -195,6 +229,24 @@ def _execute_llm_plan(plan: dict, motion_svc, light_svc, serial_drv, tts_svc):
                 secs = float(params.get("seconds", 1.0))
                 _time.sleep(secs)
 
+            # ── 火情监测 / 手势控制开关 (对照 app_sim2.py toggle_xxx) ──
+            elif action == "fire_check_on":
+                if fire_svc:
+                    fire_svc.start()
+                    logger.info("  LLM: 开启火情监测")
+            elif action == "fire_check_off":
+                if fire_svc:
+                    fire_svc.stop()
+                    logger.info("  LLM: 关闭火情监测")
+            elif action == "hand_ctrl_on":
+                if gesture_svc:
+                    gesture_svc.start()
+                    logger.info("  LLM: 开启手势控制")
+            elif action == "hand_ctrl_off":
+                if gesture_svc:
+                    gesture_svc.stop()
+                    logger.info("  LLM: 关闭手势控制")
+
             else:
                 logger.warning(f"  未知动作: {action}")
 
@@ -235,6 +287,58 @@ def main():
     light_svc = LightService(serial_drv)
     sensor_svc = SensorService(serial_drv, interval=SENSOR_INTERVAL)
 
+    # 火情监测服务 (对照 app_sim2.py toggle_fire_check)
+    logger.info("    初始化火情监测服务...")
+    fire_svc = FireService(
+        sound_callback=serial_drv.play_sound,  # 对照 app_sim2.py playSound
+        debug=DEBUG,
+    )
+
+    # 手势控制服务 (对照 app_sim2.py toggle_hand_ctrl)
+    logger.info("    初始化手势控制服务...")
+    # 手势运动回调: 手势→运动, 速度使用手势专用的低速档 (对照 app_sim2.py speed/300)
+    def _gesture_motion(action: str):
+        """手势指令 → 运动执行 (对照 app_sim2.py hand_ctrls)
+
+        手势使用更低的速率:
+            平移: speed/300 (vs 按钮 speed/100)
+            旋转: speed*3.2/400 (vs 按钮 speed*3.2/100)
+        """
+        sp = motion_svc.speed / 300.0       # 手势平移速度 (~1/3 按钮速度)
+        rot = motion_svc.speed * 3.2 / 400.0  # 手势旋转速度 (~1/4 按钮速度)
+        cmd = {
+            "forward":      (sp, 0.0, 0.0),
+            "backward":     (-sp, 0.0, 0.0),
+            "turn_left":    (0.0, 0.0, rot),
+            "turn_right":   (0.0, 0.0, -rot),
+            "strafe_left":  (0.0, sp, 0.0),
+            "strafe_right": (0.0, -sp, 0.0),
+            "stop":         (0.0, 0.0, 0.0),
+        }
+        vx, vy, vz = cmd.get(action, (0.0, 0.0, 0.0))
+        logger.info(f"✋ 手势: {action} → vx={vx:.3f} vy={vy:.3f} vz={vz:.3f}")
+        motion_svc.execute(vx, vy, vz)
+        # "停止"以外的动作持续 0.5s 后自动停车
+        if action != "stop":
+            import time as _time
+            def _auto_stop():
+                _time.sleep(0.5)
+                motion_svc.execute(0.0, 0.0, 0.0)
+            import threading
+            threading.Thread(target=_auto_stop, daemon=True).start()
+
+    gesture_svc = GestureService(
+        motion_callback=_gesture_motion,
+        sound_callback=serial_drv.play_sound,  # 对照 app_sim2.py playSound
+        debug=DEBUG,
+    )
+
+    # 注册帧处理器到视频流 (对照 app_sim2.py update_camera_frame 中的检测逻辑)
+    # 顺序: 火情先处理 (画火焰框), 手势后处理 (画手部关键点)
+    add_frame_processor(fire_svc.process_frame)
+    add_frame_processor(gesture_svc.process_frame)
+    logger.info("    帧处理器已注册: 火情监测 + 手势控制")
+
     logger.info("    初始化语音识别服务...")
     voice_svc = VoiceService(
         alsa_device=VOICE_ALSA_DEVICE,
@@ -242,7 +346,8 @@ def main():
         xunfei_api_key=XUNFEI_API_KEY,
         xunfei_api_secret=XUNFEI_API_SECRET,
         auto_exec=VOICE_AUTO_EXEC,
-        motion_callback=lambda action, dur: _voice_motion(action, dur, motion_svc),
+        motion_callback=lambda action, dur: _voice_motion(
+            action, dur, motion_svc, fire_svc, gesture_svc),
         debug=DEBUG,
     )
 
@@ -277,7 +382,9 @@ def main():
     inject_services(motion_svc, light_svc, sensor_svc, serial_drv,
                     voice_svc, tts_svc, llm_svc,
                     plan_executor=lambda plan: _execute_llm_plan(
-                        plan, motion_svc, light_svc, serial_drv, tts_svc))
+                        plan, motion_svc, light_svc, serial_drv, tts_svc,
+                        fire_svc, gesture_svc),
+                    fire_svc=fire_svc, gesture_svc=gesture_svc)
 
     # 注册 /video_feed MJPEG 路由
     register_video_route(app, camera_drv, JPEG_QUALITY)
@@ -293,6 +400,10 @@ def main():
     logger.info("  POST /api/light      照明灯 {enable}")
     logger.info("  POST /api/beep       蜂鸣器 {enable}")
     logger.info("  POST /api/follow_line 巡线 {enable}")
+    logger.info("  POST /api/fire_check  火情监测 {enable}")
+    logger.info("  GET  /api/fire_check  火情状态+告警")
+    logger.info("  POST /api/hand_ctrl   手势控制 {enable}")
+    logger.info("  GET  /api/hand_ctrl   手势状态")
     logger.info("  POST /api/servo       PWM舵机 {id,angle}")
     logger.info("  POST /api/arm         机械臂 {id,angle,time}")
     logger.info("  POST /api/voice/start  开始录音")
@@ -312,6 +423,11 @@ def main():
     except KeyboardInterrupt:
         logger.info("正在关闭...")
     finally:
+        # 停止火情监测 + 手势控制 (停止帧处理器)
+        fire_svc.stop()
+        gesture_svc.stop()
+        remove_frame_processor(fire_svc.process_frame)
+        remove_frame_processor(gesture_svc.process_frame)
         motion_svc.stop()
         camera_drv.release()
         voice_svc.stop()

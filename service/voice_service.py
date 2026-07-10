@@ -52,6 +52,7 @@ class VoiceService:
 
     # ── 中文关键词 → 运动动作映射 (对照 STT_Control._xunfei_keywords) ──
     KEYWORD_MAP = {
+        # 运动控制
         "往前走": ("forward", 5.0), "前进": ("forward", 5.0),
         "直走": ("forward", 5.0), "向前走": ("forward", 5.0),
         "往后退": ("backward", 5.0), "后退": ("backward", 5.0),
@@ -68,6 +69,26 @@ class VoiceService:
         "停下": ("stop", 0), "刹车": ("stop", 0),
         "加速": ("speed_up", 0), "快点": ("speed_up", 0),
         "减速": ("speed_down", 0), "慢点": ("speed_down", 0),
+
+        # 火情监测开关 (对照 app_sim2.py toggle_fire_check)
+        "开启火情监测": ("fire_check_on", 0),
+        "打开火情监测": ("fire_check_on", 0),
+        "火情监测": ("fire_check_on", 0),
+        "火焰检测": ("fire_check_on", 0),
+        "开始火情监测": ("fire_check_on", 0),
+        "关闭火情监测": ("fire_check_off", 0),
+        "停止火情监测": ("fire_check_off", 0),
+        "关火情监测": ("fire_check_off", 0),
+
+        # 手势控制开关 (对照 app_sim2.py toggle_hand_ctrl)
+        "开启手势控制": ("hand_ctrl_on", 0),
+        "打开手势控制": ("hand_ctrl_on", 0),
+        "手势控制": ("hand_ctrl_on", 0),
+        "手势识别": ("hand_ctrl_on", 0),
+        "开始手势控制": ("hand_ctrl_on", 0),
+        "关闭手势控制": ("hand_ctrl_off", 0),
+        "停止手势控制": ("hand_ctrl_off", 0),
+        "关手势控制": ("hand_ctrl_off", 0),
     }
 
     def __init__(
