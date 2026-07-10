@@ -300,12 +300,13 @@ def main():
     def _gesture_motion(action: str):
         """手势指令 → 运动执行 (对照 app_sim2.py hand_ctrls)
 
-        手势使用更低的速率:
-            平移: speed/300 (vs 按钮 speed/100)
-            旋转: speed*3.2/400 (vs 按钮 speed*3.2/100)
+        手势速度调节:
+            平移: speed/150 (按钮为 speed/100, 手势约 2/3 按钮速度)
+            旋转: speed*3.2/200 (按钮为 speed*3.2/100, 手势约 1/2 按钮速度)
+        数字越小速度越快, 可根据需要调整
         """
-        sp = motion_svc.speed / 300.0       # 手势平移速度 (~1/3 按钮速度)
-        rot = motion_svc.speed * 3.2 / 400.0  # 手势旋转速度 (~1/4 按钮速度)
+        sp = motion_svc.speed / 150.0       # 手势平移速度 (可调: 数字越小越快)
+        rot = motion_svc.speed * 3.2 / 200.0  # 手势旋转速度 (可调: 数字越小越快)
         cmd = {
             "forward":      (sp, 0.0, 0.0),
             "backward":     (-sp, 0.0, 0.0),
@@ -318,11 +319,11 @@ def main():
         vx, vy, vz = cmd.get(action, (0.0, 0.0, 0.0))
         logger.info(f"✋ 手势: {action} → vx={vx:.3f} vy={vy:.3f} vz={vz:.3f}")
         motion_svc.execute(vx, vy, vz)
-        # "停止"以外的动作持续 0.5s 后自动停车
+        # "停止"以外的动作持续 1.0s 后自动停车 (手势不保持, 每次触发只走一段)
         if action != "stop":
             import time as _time
             def _auto_stop():
-                _time.sleep(0.5)
+                _time.sleep(1.0)
                 motion_svc.execute(0.0, 0.0, 0.0)
             import threading
             threading.Thread(target=_auto_stop, daemon=True).start()
