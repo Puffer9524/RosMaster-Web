@@ -293,16 +293,13 @@ class FireService:
                           f"{self.AI_SERVER_HOST}:{self.AI_SERVER_PORT}")
             except socket.timeout:
                 self._aisock = None
-                if self._debug:
-                    print("[FireService] 连接 AI 服务器超时")
+                print("[FireService] 连接 AI 服务器超时 (127.0.0.1:12345)")
             except ConnectionRefusedError:
                 self._aisock = None
-                if self._debug:
-                    print("[FireService] 连接被拒绝, AI 服务器可能未启动")
+                print("[FireService] 连接被拒绝, AI 服务器 (127.0.0.1:12345) 未启动")
             except Exception as e:
                 self._aisock = None
-                if self._debug:
-                    print(f"[FireService] 连接错误: {e}")
+                print(f"[FireService] 连接错误: {e}")
 
     def _disconnect(self) -> None:
         """断开 AI 服务器连接"""
@@ -345,12 +342,12 @@ class FireService:
             return reply
 
         except socket.timeout:
-            if self._debug:
-                print("[FireService] 等待 AI 服务器回复超时")
+            print("[FireService] 等待 AI 服务器回复超时 (非致命)")
             return None
         except Exception as e:
-            if self._debug:
-                print(f"[FireService] 发送帧异常: {e}")
+            print(f"[FireService] ✗ 发送帧异常: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     # ── 内部工具 ──

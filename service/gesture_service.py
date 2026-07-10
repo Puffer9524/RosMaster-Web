@@ -245,24 +245,33 @@ class GestureService:
         try:
             frame, event = self._detector.detect(frame)
         except Exception as e:
-            if self._debug:
-                print(f"[GestureService] 手势检测异常: {e}")
+            # 检测异常始终打印 (不依赖 debug 开关)
+            print(f"[GestureService] ✗ 手势检测异常: {e}")
+            import traceback
+            traceback.print_exc()
             return frame
 
         # 手势状态机 (对照 app_sim2.py 手势确认逻辑)
         with self._lock:
             if event != self._last_gesture:
                 # 手势变化, 重置计数
+                if self._debug and self._last_gesture != "Unknown":
+                    print(f"[GestureService] 手势切换: '{self._last_gesture}' → '{event}' (计数重置)")
                 self._last_gesture = event
                 self._gesture_count = 0
             else:
                 self._gesture_count += 1
+                # 显示确认进度 (方便诊断)
+                if self._debug and event != "Unknown" and self._gesture_count <= self.GESTURE_CONFIRM_COUNT:
+                    print(f"[GestureService] 手势 '{event}' 确认中 {self._gesture_count}/{self.GESTURE_CONFIRM_COUNT}")
 
             # 连续 N 帧相同 + 冷却时间 → 执行动作
             if (self._gesture_count >= self.GESTURE_CONFIRM_COUNT
                     and now - self._last_action_time > self.ACTION_COOLDOWN):
+                print(f"[GestureService] ✓ 手势 '{event}' 触发! 确认{self._gesture_count}帧, 距上次{now - self._last_action_time:.1f}s")
                 self._execute_gesture(event)
                 self._last_action_time = now
+                self._gesture_count = 0  # 执行后重置, 避免重复触发
 
             self._latest_gesture = event
 
@@ -302,8 +311,10 @@ class GestureService:
             try:
                 self._motion_callback(action)
             except Exception as e:
-                if self._debug:
-                    print(f"[GestureService] 运动回调失败: {e}")
+                # 回调异常始终打印
+                print(f"[GestureService] ✗ 运动回调失败: action={action}, error={e}")
+                import traceback
+                traceback.print_exc()
 
         with self._lock:
             self._latest_action = action
