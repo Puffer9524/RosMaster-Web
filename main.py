@@ -298,12 +298,16 @@ def main():
     logger.info("    初始化手势控制服务...")
     # 手势运动回调: 手势→运动, 速度使用手势专用的低速档 (对照 app_sim2.py speed/300)
     def _gesture_motion(action: str):
-        """手势指令 → 运动执行 (对照 app_sim2.py hand_ctrls)
+        """手势指令 → 运动执行 (对照 app_sim2.py hand_ctrls + 语音控制看门狗续命模式)
 
         手势速度调节:
             平移: speed/150 (按钮为 speed/100, 手势约 2/3 按钮速度)
             旋转: speed*3.2/200 (按钮为 speed*3.2/100, 手势约 1/2 按钮速度)
-        数字越小速度越快, 可根据需要调整
+        数字越小速度越快.
+
+        看门狗续命模式 (学习 _voice_motion):
+            MotionService 有 0.5s 看门狗超时, 必须每 0.3s 重发指令续命,
+            否则机器人只动 0.5s 就被强制停车.
         """
         sp = motion_svc.speed / 150.0       # 手势平移速度 (可调: 数字越小越快)
         rot = motion_svc.speed * 3.2 / 200.0  # 手势旋转速度 (可调: 数字越小越快)
@@ -317,16 +321,25 @@ def main():
             "stop":         (0.0, 0.0, 0.0),
         }
         vx, vy, vz = cmd.get(action, (0.0, 0.0, 0.0))
-        logger.info(f"✋ 手势: {action} → vx={vx:.3f} vy={vy:.3f} vz={vz:.3f}")
-        motion_svc.execute(vx, vy, vz)
-        # "停止"以外的动作持续 1.0s 后自动停车 (手势不保持, 每次触发只走一段)
+        logger.info(f"✋ 手势: {action} → vx={vx:.3f} vy={vy:.3f} vz={vz:.3f} (持续 5s)")
+
         if action != "stop":
+            # 学习 _voice_motion: 每 0.3s 续命看门狗 (MotionService 超时 0.5s)
             import time as _time
-            def _auto_stop():
-                _time.sleep(1.0)
+            def _timed_move():
+                duration = 5.0
+                elapsed = 0.0
+                tick = 0.3  # 小于看门狗 0.5s 超时
+                while elapsed < duration:
+                    motion_svc.execute(vx, vy, vz)
+                    sleep_time = min(tick, duration - elapsed)
+                    _time.sleep(sleep_time)
+                    elapsed += sleep_time
                 motion_svc.execute(0.0, 0.0, 0.0)
             import threading
-            threading.Thread(target=_auto_stop, daemon=True).start()
+            threading.Thread(target=_timed_move, daemon=True).start()
+        else:
+            motion_svc.execute(vx, vy, vz)
 
     gesture_svc = GestureService(
         motion_callback=_gesture_motion,
